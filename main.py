@@ -9,7 +9,7 @@ import os
 # --- CONFIG --- #
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-CHANNEL_ID = 123456789012345678  # Replace with your Discord channel ID
+CHANNEL_ID = 1373580420654039130  # Replace with your Discord channel ID
 
 MODEL = "deepseek/deepseek-r1:free"
 
