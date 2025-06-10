@@ -6,6 +6,7 @@ from keep_alive import keep_alive
 import os
 import random
 import re
+import asyncio  # Added to support delay
 
 # --- CONFIG --- #
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -98,6 +99,7 @@ async def on_message(message):
     if message.channel.id != CHANNEL_ID:
         return
     await message.channel.typing()
+    await asyncio.sleep(1)  # Prevents hitting OpenRouter too fast
     raw_reply = ask_openrouter(message.content)
     chooha_reply = transform_text(raw_reply)
     await message.channel.send(chooha_reply)
