@@ -141,11 +141,6 @@ async def on_message(message):
     if message.author.bot or message.channel.id != CHANNEL_ID:
         return
 
-    # --- Ignore roles ---
-    ignored_roles = ["Admin", "Muted", "Silent"]
-    if any(role.name in ignored_roles for role in message.author.roles):
-        return
-
     await bot.process_commands(message)
 
     username = str(message.author.name)
