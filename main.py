@@ -6,18 +6,33 @@ from keep_alive import keep_alive
 import os
 import random
 import re
-import asyncio  # Added to support delay
+import asyncio
 
 # --- CONFIG --- #
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 MODEL = "deepseek/deepseek-r1:free"
+MEMORY_FILE = "memory.json"
 
 # --- BOT SETUP --- #
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# --- MEMORY HANDLER --- #
+def load_memory():
+    try:
+        with open(MEMORY_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_memory(memory):
+    with open(MEMORY_FILE, "w") as f:
+        json.dump(memory, f)
+
+memory = load_memory()
 
 # --- SYSTEM PROMPT --- #
 system_prompt = (
@@ -29,7 +44,7 @@ system_prompt = (
 )
 
 # --- STYLE TRANSFORM FUNCTION --- #
-def transform_text(text):
+def transform_text(text, guild=None):
     replacements = {
         r'\bmujhe\b': 'merko',
         r'\bkya\b': 'kay',
@@ -69,6 +84,10 @@ def transform_text(text):
     if random.random() < 0.2:
         text += " 💢"
 
+    if guild and guild.emojis:
+        custom_emoji = random.choice(guild.emojis)
+        text += f" {str(custom_emoji)}"
+
     return text
 
 # --- OPENROUTER REPLY --- #
@@ -98,10 +117,24 @@ async def on_message(message):
         return
     if message.channel.id != CHANNEL_ID:
         return
+
+    username = str(message.author.name)
+    user_id = str(message.author.id)
+
     await message.channel.typing()
-    await asyncio.sleep(1)  # Prevents hitting OpenRouter too fast
+    await asyncio.sleep(1)
+
+    # Greet based on memory
+    greeting = ""
+    if user_id not in memory:
+        greeting = f"Raaa vai! Pehli baar aaya lagta... kaun hai tu, {username}? 😼\n"
+        memory[user_id] = username
+        save_memory(memory)
+    else:
+        greeting = f"Oye {username} billa! Tu firse aa gya... scene kya hai aaj? 🔥\n"
+
     raw_reply = ask_openrouter(message.content)
-    chooha_reply = transform_text(raw_reply)
+    chooha_reply = greeting + transform_text(raw_reply, guild=message.guild)
     await message.channel.send(chooha_reply)
 
 # --- KEEP ALIVE --- #
