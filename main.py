@@ -34,14 +34,24 @@ def save_memory(memory):
 
 memory = load_memory()
 
-# --- SYSTEM PROMPT --- #
-system_prompt = (
+# --- SYSTEM PROMPTS --- #
+hindlish_prompt = (
     "You are Chooha, a male stray grey tabby cat, also known as Evara Billa and the legendary Chepel Stealer of the gully. "
     "You are silly, kind, non-toxic, and street-smart. "
     "You speak in broken Hindi, English, Punjabi with funny typos, memes, cat sounds like 'raaaa', 'raaa vaii', 'kutkut', 'meow meow', 'nyaa', 'purr~'. "
     "You randomly say things like 'raaa vai!', 'chepel chura loonga', 'scene on hai bhayaa', and use slang like 'merko', 'taamike', 'yo', 'kay', 'goot', etc. "
     "You NEVER break character. Always reply like Chooha with gully energy and attitude. Use 🔪🐁🐾 emojis often, 💢 sometimes."
 )
+
+english_prompt = (
+    "You are Chooha, a silly but kind street cat. If the user talks in English, you reply fully in casual English with playful attitude. "
+    "You're a bit mischievous and cheeky. Be funny but never toxic. You don't mix Hindi/Punjabi when replying in English."
+)
+
+# --- LANGUAGE DETECTION (simple) --- #
+def is_mostly_english(text):
+    english_words = sum(1 for word in text.split() if re.match(r"[a-zA-Z]+", word))
+    return english_words / max(1, len(text.split())) > 0.7
 
 # --- STYLE TRANSFORM FUNCTION --- #
 def transform_text(text, guild=None):
@@ -91,7 +101,7 @@ def transform_text(text, guild=None):
     return text
 
 # --- OPENROUTER REPLY --- #
-def ask_openrouter(message):
+def ask_openrouter(message, system_prompt):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
@@ -106,6 +116,21 @@ def ask_openrouter(message):
     response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, data=json.dumps(payload))
     return response.json()["choices"][0]["message"]["content"]
 
+# --- ROAST COMMAND --- #
+@bot.command()
+async def roast(ctx, user: discord.Member = None):
+    if not user:
+        await ctx.send("Raaa vai! Kis ko roast karu? Tag to karo 😼")
+        return
+    roasts = [
+        f"Oye {user.display_name}, tu toh chepel bhi chura ke bhaagta nei re... tu chura le attention! 🔥",
+        f"{user.display_name}, tere jaisa toh gully ke kachre bhi ignore karte 😹",
+        f"{user.display_name}, scene tera full tight hai... dimaag light hai 🔪",
+        f"Oye {user.display_name}, attitude tere paas hai, bas talent chhutti pe hai 💢",
+        f"{user.display_name}, tu toh wahi banda hai jo YouTube pe 'how to breathe' search karta 🐁"
+    ]
+    await ctx.send(random.choice(roasts))
+
 # --- EVENTS --- #
 @bot.event
 async def on_ready():
@@ -113,10 +138,15 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
+    if message.author.bot or message.channel.id != CHANNEL_ID:
         return
-    if message.channel.id != CHANNEL_ID:
+
+    # --- Ignore roles ---
+    ignored_roles = ["Admin", "Muted", "Silent"]
+    if any(role.name in ignored_roles for role in message.author.roles):
         return
+
+    await bot.process_commands(message)
 
     username = str(message.author.name)
     user_id = str(message.author.id)
@@ -133,7 +163,10 @@ async def on_message(message):
     else:
         greeting = f"Oye {username} billa! Tu firse aa gya... scene kya hai aaj? 🔥\n"
 
-    raw_reply = ask_openrouter(message.content)
+    # Language-based personality
+    prompt_used = english_prompt if is_mostly_english(message.content) else hindlish_prompt
+
+    raw_reply = ask_openrouter(message.content, prompt_used)
     chooha_reply = greeting + transform_text(raw_reply, guild=message.guild)
     await message.channel.send(chooha_reply)
 
