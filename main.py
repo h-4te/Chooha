@@ -13,26 +13,11 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 MODEL = "deepseek/deepseek-r1:free"
-MEMORY_FILE = "memory.json"
 
 # --- BOT SETUP --- #
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# --- MEMORY HANDLER --- #
-def load_memory():
-    try:
-        with open(MEMORY_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_memory(memory):
-    with open(MEMORY_FILE, "w") as f:
-        json.dump(memory, f)
-
-memory = load_memory()
 
 # --- SYSTEM PROMPTS --- #
 hindlish_prompt = (
@@ -48,13 +33,14 @@ english_prompt = (
     "You're a bit mischievous and cheeky. Be funny but never toxic. You don't mix Hindi/Punjabi when replying in English."
 )
 
-# --- LANGUAGE DETECTION (simple) --- #
+# --- LANGUAGE DETECTION --- #
 def is_mostly_english(text):
     english_words = sum(1 for word in text.split() if re.match(r"[a-zA-Z]+", word))
     return english_words / max(1, len(text.split())) > 0.7
 
 # --- STYLE TRANSFORM FUNCTION --- #
 def transform_text(text, guild=None):
+    # Word replacements for slang
     replacements = {
         r'\bmujhe\b': 'merko',
         r'\bkya\b': 'kay',
@@ -76,29 +62,47 @@ def transform_text(text, guild=None):
         r'\bchappal\b': 'chepel',
         r'\bChappal\b': 'Chepel',
     }
-
     for pattern, repl in replacements.items():
         text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
 
+    # Inject personality
     if random.random() < 0.4:
         text = "Raaa vai! " + text
     if random.random() < 0.4:
         text += " Raaa vai!"
 
     if random.random() < 0.2:
-        text += " (chepel chura loonga... hehehe 🐾)"
+        text += " (chepel chura loonga... hehehe)"
 
-    emojis = ['🔪', '🐁', '🐾']
-    for _ in range(random.randint(1, 2)):
-        text += " " + random.choice(emojis)
-    if random.random() < 0.2:
-        text += " 💢"
+    # --- Mood detection --- #
+    lower = text.lower()
+    if any(word in lower for word in ["gussa", "laffa", "fight", "block", "angry", "chod", "kill"]):
+        mood = "angry"
+    elif any(word in lower for word in ["meow", "hello", "sweet", "hehe", "lol", "happy", "fun", "love"]):
+        mood = "happy"
+    else:
+        mood = "neutral"
 
+    # Emoji pools
+    mood_emojis = {
+        "angry": ['💢', '🔪', '🔥'],
+        "happy": ['🐾', '😺', '😹'],
+        "neutral": ['🔪', '🐁', '😼']
+    }
+
+    emoji_pool = mood_emojis[mood]
+
+    # Add server emojis if available
     if guild and guild.emojis:
-        custom_emoji = random.choice(guild.emojis)
-        text += f" {str(custom_emoji)}"
+        emoji_pool += [str(e) for e in guild.emojis]
 
-    return text
+    # Split and add emojis at end of random sentences
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    for i in range(len(sentences)):
+        if random.random() < 0.5 and emoji_pool:
+            sentences[i] += " " + random.choice(emoji_pool)
+
+    return ' '.join(sentences)
 
 # --- OPENROUTER REPLY --- #
 def ask_openrouter(message, system_prompt):
@@ -122,14 +126,19 @@ async def roast(ctx, user: discord.Member = None):
     if not user:
         await ctx.send("Raaa vai! Kis ko roast karu? Tag to karo 😼")
         return
-    roasts = [
-        f"Oye {user.display_name}, tu toh chepel bhi chura ke bhaagta nei re... tu chura le attention! 🔥",
-        f"{user.display_name}, tere jaisa toh gully ke kachre bhi ignore karte 😹",
-        f"{user.display_name}, scene tera full tight hai... dimaag light hai 🔪",
-        f"Oye {user.display_name}, attitude tere paas hai, bas talent chhutti pe hai 💢",
-        f"{user.display_name}, tu toh wahi banda hai jo YouTube pe 'how to breathe' search karta 🐁"
-    ]
-    await ctx.send(random.choice(roasts))
+    prompt = f"Roast <@{user.id}> in gully style, like a silly cat. Use Hindi-English slang and emojis. Make it funny, not toxic."
+    reply = ask_openrouter(prompt, hindlish_prompt)
+    await ctx.send(transform_text(reply, guild=ctx.guild))
+
+# --- PRAISE COMMAND --- #
+@bot.command()
+async def praise(ctx, user: discord.Member = None):
+    if not user:
+        await ctx.send("Raaa vai! Kis ki tareef karu? Naam to do 😸")
+        return
+    prompt = f"Praise <@{user.id}> like Chooha the cat would do in silly, sweet Hindlish. Add cat vibes and some funny emojis too."
+    reply = ask_openrouter(prompt, hindlish_prompt)
+    await ctx.send(transform_text(reply, guild=ctx.guild))
 
 # --- EVENTS --- #
 @bot.event
@@ -141,28 +150,17 @@ async def on_message(message):
     if message.author.bot or message.channel.id != CHANNEL_ID:
         return
 
-    await bot.process_commands(message)
-
-    username = str(message.author.name)
-    user_id = str(message.author.id)
+    ctx = await bot.get_context(message)
+    if ctx.valid:
+        await bot.process_commands(message)
+        return
 
     await message.channel.typing()
     await asyncio.sleep(1)
 
-    # Greet based on memory
-    greeting = ""
-    if user_id not in memory:
-        greeting = f"Raaa vai! Pehli baar aaya lagta... kaun hai tu, {username}? 😼\n"
-        memory[user_id] = username
-        save_memory(memory)
-    else:
-        greeting = f"Oye {username} billa! Tu firse aa gya... scene kya hai aaj? 🔥\n"
-
-    # Language-based personality
     prompt_used = english_prompt if is_mostly_english(message.content) else hindlish_prompt
-
     raw_reply = ask_openrouter(message.content, prompt_used)
-    chooha_reply = greeting + transform_text(raw_reply, guild=message.guild)
+    chooha_reply = transform_text(raw_reply, guild=message.guild)
     await message.channel.send(chooha_reply)
 
 # --- KEEP ALIVE --- #
